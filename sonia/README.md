@@ -8,33 +8,22 @@ análisis de datos confirma.
 
 ---
 
-## Los datos no están en este repositorio
+## Los datos
 
-Los 6 CSV del reto los entregan los organizadores de la hackatón y no nos
-corresponde redistribuirlos. Para correr el sistema, colócalos en la **carpeta
-padre** de `sonia/`, con sus nombres originales:
+Los 6 CSV del reto van incluidos, así que el sistema corre al clonar. Son datos
+**sintéticos y anonimizados** por los organizadores: los clientes son
+`CLIENT_00001`…`CLIENT_01000` y los RUC están aleatorizados — no hay información
+de ninguna empresa real. Ver `procedencia.py` para qué patrones son del negocio
+y cuáles del generador.
 
-```
-tu-carpeta/
-├── 001_TBL_CLIENTES_B2B.csv
-├── 002_TBL_PLANTA_FIJA_B2B.csv
-├── 003_TBL_PLANTA_MOVIL_B2B.csv
-├── 004_TBL_PAGOS_B2B.csv
-├── 005_TBL_FACTURAS_B2B.csv
-├── 006_TBL_NOTAS_CREDITO_B2B.csv
-└── sonia/          ← este repositorio
-```
-
-Verifica que estén bien antes de correr nada:
+Antes de correr nada conviene validarlos:
 
 ```bash
 cd sonia
 python contrato.py
 ```
 
-Debe decir **CUMPLE** en las seis tablas. Si tus archivos tienen otros nombres,
-rutas o formatos, `contrato.py` te dice exactamente qué falta — ver la sección
-*Conectar los datos reales* más abajo.
+Debe decir **CUMPLE** en las seis tablas.
 
 ## Correr
 

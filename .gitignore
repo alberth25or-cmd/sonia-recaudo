@@ -18,7 +18,5 @@ skills-lock.json
 Hackaton Movistar/
 Hackaton Movistar.rar
 
-# Material de los organizadores — no nos corresponde redistribuirlo.
-# Los CSV van en la carpeta padre de sonia/ ; ver el README.
+# Documento oficial de los organizadores — no nos corresponde redistribuirlo
 *.pdf
-*.csv
