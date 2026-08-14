@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generados por el sistema (se recrean corriendo el proyecto)
+sonia/informe.html
+sonia/auditorias.csv
+SONIA_paquete.zip
+
+# Herramientas locales
+.agents/
+.claude/
+skills-lock.json
+
+# Prototipo original de Agentes 1551 — se comparte por su propia vía
+Hackaton Movistar/
+Hackaton Movistar.rar
+
+# Material de los organizadores — no nos corresponde redistribuirlo.
+# Los CSV van en la carpeta padre de sonia/ ; ver el README.
+*.pdf
+*.csv
