@@ -76,6 +76,53 @@ def main():
     pendientes = decisiones[decisiones.cola != "AUTO"].sort_values("monto", ascending=False)
     auto = decisiones[decisiones.cola == "AUTO"]
 
+    # --- En qué se divide el trabajo ------------------------------------------
+    # El Resumen dice "671 por asignar" sin explicar qué son. Esto los abre por
+    # tipo. Los nombres son en lenguaje llano, NO los códigos internos
+    # (AUTO/HIPOTESIS/INVESTIGAR): quien mira esto no tiene por qué conocerlos.
+    reparto = []
+    for clave, nombre, hace, color in [
+        ("AUTO", "Aplicado solo", "Nada — ya quedó resuelto", "var(--green)"),
+        ("CONFIRMAR", "Elegir entre opciones",
+         "Confirma cuál de varias combinaciones válidas es la correcta", "var(--cyan)"),
+        ("HIPOTESIS", "Pago a cuenta",
+         "Aprueba el abono parcial y el saldo que queda debiendo", "var(--amber)"),
+        ("INVESTIGAR", "Sin calce exacto",
+         "Confirma o corrige las facturas que señala el modelo", "var(--rose)"),
+    ]:
+        g = decisiones[decisiones.cola == clave]
+        if not len(g):
+            continue
+        reparto.append({
+            "nombre": nombre, "hace": hace, "color": color,
+            "casos": len(g),
+            "pct": len(g) / len(decisiones) * 100,
+            "monto": float(g.monto.sum()),
+            "minutos": len(g) * recaudo.SEGUNDOS_POR_CASO[clave] / 60
+                       / recaudo.DIAS_HABILES_VENTANA,
+        })
+
+    barra = "".join(
+        f'<div class="tramo" style="width:{r["pct"]:.2f}%;background:{r["color"]}" '
+        f'title="{e(r["nombre"])}: {r["casos"]:,} casos">'
+        f'{f"{r['pct']:.1f}%" if r["pct"] >= 6 else ""}</div>' for r in reparto)
+
+    # Un decimal en los minutos, no cero: con redondeo por fila la columna suma
+    # 18 y el titular dice 19, y quien sume la tabla encuentra la diferencia.
+    filas_reparto = "".join(f"""<tr>
+      <td><span class="punto" style="background:{r['color']}"></span>{e(r['nombre'])}</td>
+      <td class="dim">{e(r['hace'])}</td>
+      <td class="num">{r['casos']:,}</td>
+      <td class="num">{r['pct']:.1f}%</td>
+      <td class="num">S/ {r['monto']:,.0f}</td>
+      <td class="num">{r['minutos']:.1f}</td></tr>""" for r in reparto)
+    filas_reparto += f"""<tr class="total">
+      <td colspan="2">Total</td>
+      <td class="num">{len(decisiones):,}</td>
+      <td class="num">100%</td>
+      <td class="num">S/ {decisiones.monto.sum():,.0f}</td>
+      <td class="num">{carga['minutos_por_dia_habil']:.1f}</td></tr>"""
+
     print(f"Redactando {CASOS_EXPLICADOS} motivos con {llm.etiqueta()}...")
     redactados = {}
     for c in pendientes.head(CASOS_EXPLICADOS).to_dict("records"):
@@ -270,6 +317,7 @@ def main():
         monto_aplicado=k_rec["monto_aplicado_solo_soles"],
         n_pend=len(pendientes), monto_pend=pendientes.monto.sum(),
         minutos=carga["minutos_por_dia_habil"], fte=carga["fte"],
+        barra=barra, filas_reparto=filas_reparto,
         fuga=k_fac["clientes_con_fuga"], impacto_fuga=k_fac["impacto_estimado_soles"],
         nc=k_fac["tasa_error_facturacion_pct"], nunca=k_fac["nunca_facturados"],
         riesgo=k_bi["clientes_riesgo_alto"],
@@ -449,6 +497,19 @@ PLANTILLA = r"""<!DOCTYPE html>
     font-variant-numeric:tabular-nums; }}
   td.center {{ text-align:center; }}
   td.dim {{ color:var(--text-dim); font-size:12px; max-width:340px; }}
+  /* Reparto del trabajo: la barra da la proporción de un vistazo y la tabla
+     el detalle. El ancho de cada tramo ES el volumen, no un adorno. */
+  p.intro {{ color:var(--text-dim); font-size:13px; line-height:1.6;
+    margin:0 0 12px; max-width:70ch; }}
+  .barra-colas {{ display:flex; height:34px; border-radius:9px; overflow:hidden;
+    margin-bottom:12px; border:1px solid var(--line); }}
+  .barra-colas .tramo {{ display:flex; align-items:center; justify-content:center;
+    font-size:11.5px; font-weight:600; color:#0a0e1a; overflow:hidden;
+    font-variant-numeric:tabular-nums; }}
+  .punto {{ display:inline-block; width:9px; height:9px; border-radius:50%;
+    margin-right:8px; vertical-align:baseline; }}
+  tr.total td {{ border-top:2px solid var(--line); font-weight:600;
+    color:var(--text); }}
   .badge {{ padding:3px 9px; border-radius:20px; font-size:10.5px; font-weight:600;
     color:#0a0e1a; white-space:nowrap; }}
   h3.sec {{ font-size:13px; margin:22px 0 10px; color:var(--text-dim);
@@ -516,6 +577,17 @@ PLANTILLA = r"""<!DOCTYPE html>
       de trabajo. Se resuelven en <b>Asignar depósitos</b>.</p>
     </div>
   </div>
+  <h3 class="sec">En qué se divide el trabajo</h3>
+  <p class="intro">Cada depósito cae en uno de estos cuatro grupos según cuánta
+  intervención necesita. El ancho de la barra es el volumen real.</p>
+  <div class="barra-colas">{barra}</div>
+  <div class="tablewrap"><table>
+    <tr><th>Grupo</th><th>Qué hace la persona</th><th class="num">Casos</th>
+      <th class="num">%</th><th class="num">Monto</th>
+      <th class="num">Min por día</th></tr>
+    {filas_reparto}
+  </table></div>
+
   <h3 class="sec">Requiere atención</h3>
   {alertas}
 
