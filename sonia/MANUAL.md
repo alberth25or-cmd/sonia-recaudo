@@ -6,56 +6,55 @@ Cómo trabajar con lo construido. Organizado por lo que quieres hacer, no por ar
 
 ## Lo único que hay que abrir
 
-```bash
-cd "C:\Users\Luis\Documents\cursor\hacktaton movistar\sonia"
-streamlit run app.py
-```
+**`sonia\torre.html`.** Doble clic. No necesita servidor, ni internet, ni instalar
+nada: es una sola página que funciona en cualquier navegador y se puede enviar por
+correo tal cual.
 
-Se abre en **http://localhost:8501**. Las páginas están agrupadas por quién las
-usa, y cada una es **un trabajo**, no un artefacto:
+Cinco pestañas, cada una un trabajo:
 
-| Grupo | Página | Qué se hace ahí | Quién |
-|---|---|---|---|
-| **Operación** | **Hoy** | Ver qué toca y cómo va — es donde aterrizas | Analista |
-| | **Conciliar** | Resolver la cola, un depósito a la vez | Analista, a diario |
-| **Análisis** | **Cartera** | Fuga de ingresos, riesgo de impago, correos | Jefatura, semanal |
-| **Administración** | **Control** | Muestreo de auditoría y trazabilidad | Contraloría, semanal |
-| | **Datos** | Cargar los archivos del período | TI, al inicio |
+| Pestaña | Qué se hace ahí | Quién · cada cuánto |
+|---|---|---|
+| **Resumen** | Cómo va todo y qué requiere atención | Todos · al entrar |
+| **Asignar depósitos** | Buscar una empresa y resolver sus depósitos | Analista · a diario |
+| **Cartera** | Fuga de ingresos, riesgo de impago, correos | Jefatura · semanal |
+| **Auditar** | Revisar una muestra de lo que se aplicó solo | Contraloría · semanal |
+| **Registro** | Todo lo decidido, con hora y motivo · descargas | Contraloría · al cerrar |
 
-El panel lateral muestra siempre **de dónde salen los datos** y qué motor de
-lenguaje está activo, en todas las páginas.
+Las decisiones se guardan en el navegador, así que se puede cerrar y seguir después.
 
-Todo lo demás son comandos de terminal que imprimen números. No tienen pantalla.
-
-**Requisito opcional:** Ollama corriendo (`ollama serve`) para que las explicaciones y
-la clasificación de correos las escriba el modelo. Sin él, todo funciona igual con
-plantillas y reglas — solo cambia la calidad del texto.
+**Requisito opcional:** Ollama corriendo (`ollama serve`) al *generar* la torre, para
+que las explicaciones las escriba el modelo. Sin él se generan con plantillas — solo
+cambia la calidad del texto, no los números.
 
 ---
 
 ## El día a día del operador
 
-Así trabajaría una persona real con esto:
+**1. Abre la torre.** El Resumen dice cuántos depósitos se aplicaron solos, cuántos
+esperan y cuánto trabajo son en minutos.
 
-**1. Abre la pestaña Verificación.** Arriba ve "Tu cola de hoy": cuántos casos hay
-de cada tipo y cuántos minutos son. Los depósitos que se aplicaron solos no llegan
-aquí — ya están resueltos.
+**2. Va a Asignar depósitos.** Ve la lista de empresas con casos pendientes,
+**ordenadas por urgencia**: primero las que escribieron diciendo que pagaron, luego
+las de riesgo alto de impago. Busca una empresa o toma la primera.
 
-**2. Empieza por "Elegir entre opciones".** Son los rápidos: el agente propone, la
-suma está a la vista, se confirma o se elige otra combinación. Veinte segundos cada uno.
+**3. Resuelve sus casos uno a uno.** Cada caso llega con la propuesta hecha:
 
-**3. Sigue con "Aprobar pago parcial".** El depósito no cubre la factura completa;
-la pantalla muestra cuánto se aplica y cuánto queda pendiente. Un clic.
+- **Varias combinaciones válidas** → elige de una lista con la suma a la vista.
+- **Pago parcial** → el depósito no cubre la factura entera; aprueba y queda el saldo.
+- **Nada cuadra exacto** → el modelo señala las facturas más probables con su
+  confianza y el acumulado contra el depósito. Confirma o corrige con el listado
+  completo.
 
-**4. Termina con "Investigar".** Los difíciles. Marca facturas en el selector y ve
-la suma en vivo hasta cuadrar. Si no es de ese cliente, rechaza con el motivo.
+**4. Si algo no corresponde**, lo devuelve o lo pospone con el motivo.
 
-**5. Descarga la auditoría** desde el panel lateral antes de cerrar.
+Si se equivoca, **Deshacer** en Registro revierte la última decisión.
 
-Si se equivoca, **Deshacer** revierte la última decisión.
+**Una vez por semana:** pestaña Auditar. Revisa una muestra de los que se aplicaron
+solos —no son casos sospechosos, son justo aquellos de los que el sistema estaba
+seguro— y marca si estuvieron bien.
 
-**Una vez por semana:** pestaña Auditoría. Revisa 32 casos de los que se aplicaron
-solos (unos 11 minutos), marca si estuvieron bien, y registra la tanda.
+**Cuando haya decisiones acumuladas:** en Registro, «Exportar para reentrenar» genera
+el archivo con el que el modelo aprende de esas decisiones. Ver `realimentacion.py`.
 
 ---
 
@@ -138,14 +137,21 @@ muestras el mismo caso con Claude. Demuestra que la arquitectura está desacopla
 
 ---
 
-## Conectar los datos reales de Integratel
+## Cargar un período nuevo
+
+Tres pasos, siempre los mismos:
 
 ```bash
-python contrato.py C:\ruta\a\sus\exports
+python contrato.py C:\ruta\a\sus\exports   # 1. valida que los datos sirvan
+python asignador.py --datos C:\ruta        # 2. reentrena el modelo con ellos
+python torre.py                            # 3. regenera la torre
 ```
 
-Recorre las seis tablas y dice, columna por columna, si está y qué formato de fecha
-detectó. Si los nombres difieren:
+El paso 2 es opcional la primera vez —el modelo que viene entrenado funciona— pero
+con datos propios rinde mejor.
+
+`contrato.py` recorre las seis tablas y dice, columna por columna, si está y qué
+formato de fecha detectó. Si los nombres difieren:
 
 ```python
 datos.facturas(ruta="/export/sap/facturas.csv",
@@ -162,11 +168,11 @@ el problema que el sistema resuelve. Sí hace falta para entrenar y medir.
 
 | Síntoma | Causa | Solución |
 |---|---|---|
-| La app no abre | Streamlit detenido | `streamlit run app.py` desde `sonia` |
-| Los textos salen genéricos | Ollama detenido | `ollama serve`, o dejarlo así: funciona igual |
-| Cambié código y no se refleja | Caché de Streamlit | Reiniciar el proceso (la caché es en memoria) |
+| Los textos salen genéricos | Ollama estaba detenido al generar | `ollama serve` y `python torre.py` de nuevo |
+| Cambié código y no se refleja | La torre es un archivo generado | `python torre.py` para regenerarla |
+| Las decisiones desaparecieron | Se guardan por navegador y por equipo | Descargar el registro antes de cambiar de máquina |
 | `contrato.py` marca NO CUMPLE | Columnas o formato distintos | Usar `alias=`, `sep=`, `encoding=` |
-| Veo 81.4% o 79.7% en un HTML | Es el dashboard del prototipo original | Abrir `sonia\torre.html` |
+| Los casos no traen sugerencia | Falta el artefacto entrenado | `python asignador.py` y regenerar la torre |
 
 ---
 

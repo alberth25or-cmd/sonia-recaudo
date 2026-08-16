@@ -10,8 +10,8 @@ qué son: la mediana paga el 59% de lo que se le facturó. No son descuentos ni
 retenciones —eso daría 95-99%— son PAGOS PARCIALES GRANDES: el cliente debe algo
 repartido en varias facturas y abona una parte.
 
-Ahí no hay combinaciones que ordenar, así que el modelo de modelo.py (que elige
-entre candidatas del solver) no aplica. La pregunta es otra:
+Ahí no hay combinaciones que ordenar, así que el enfoque de aprendizaje.py —que
+elige entre las candidatas del solver— no aplica. La pregunta es otra:
 
     dado un depósito y N facturas abiertas, ¿a cuál se está aplicando?
 
