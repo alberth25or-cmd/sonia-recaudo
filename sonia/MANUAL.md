@@ -11,13 +11,19 @@ cd "C:\Users\Luis\Documents\cursor\hacktaton movistar\sonia"
 streamlit run app.py
 ```
 
-Se abre en **http://localhost:8501** con tres pestañas en el panel izquierdo:
+Se abre en **http://localhost:8501**. Las páginas están agrupadas por quién las
+usa, y cada una es **un trabajo**, no un artefacto:
 
-| Pestaña | Para qué | Quién la usa |
-|---|---|---|
-| **Informe** | Todo el sistema de un vistazo | El jurado, la gerencia |
-| **Verificación** | Resolver la cola del día | El operador de recaudo |
-| **Auditoría** | Controlar lo que se aplicó solo | El contralor, una vez por semana |
+| Grupo | Página | Qué se hace ahí | Quién |
+|---|---|---|---|
+| **Operación** | **Hoy** | Ver qué toca y cómo va — es donde aterrizas | Analista |
+| | **Conciliar** | Resolver la cola, un depósito a la vez | Analista, a diario |
+| **Análisis** | **Cartera** | Fuga de ingresos, riesgo de impago, correos | Jefatura, semanal |
+| **Administración** | **Control** | Muestreo de auditoría y trazabilidad | Contraloría, semanal |
+| | **Datos** | Cargar los archivos del período | TI, al inicio |
+
+El panel lateral muestra siempre **de dónde salen los datos** y qué motor de
+lenguaje está activo, en todas las páginas.
 
 Todo lo demás son comandos de terminal que imprimen números. No tienen pantalla.
 
@@ -62,7 +68,7 @@ Todos se corren desde la carpeta `sonia`.
 ```bash
 python orquestador.py           # el ciclo completo: 4 agentes + supervisor + KPIs
 python orquestador.py --log     # además, el log de auditoría entero
-python reporte.py               # genera informe.html para enviar por correo
+python torre.py                 # genera torre.html — el informe para proyectar o enviar
 python contrato.py              # valida que los datos cumplan lo que el sistema espera
 ```
 
@@ -75,9 +81,12 @@ que lo produce delante de quien pregunte.
 |---|---|---|
 | "¿De dónde sale ese 70.6%?" | `python backtest.py` | La medición escondiendo la respuesta |
 | "¿Cómo se compara con la industria?" | `python benchmark.py` | STP contra el piso de 80% y el 95% mundial |
-| "¿Cuánta gente hace falta?" | `python triaje.py` | Las cuatro colas y los 34 min/día |
+| "¿Cuánta gente hace falta?" | `python triaje.py` | Las cuatro colas y los 18.8 min/día |
 | "¿Y si la IA lo hace mejor?" | `python desambiguacion.py` | El LLM pierde por 7.4 puntos |
-| "¿Usan machine learning?" | `python aprendizaje.py` | Lo entrenamos y empata (67.5% ambos), por eso no está conectado |
+| "¿Usan machine learning?" | `python asignador.py` | Sí, en los casos sin calce exacto: 79.4% → 96.6% |
+| "¿El modelo no aprendió un truco del generador?" | `python asignador.py` | Quitarle el rasgo dominante cuesta 1.1 puntos |
+| "¿Por qué no lo usan en todo?" | `python aprendizaje.py` | En las combinaciones del solver empata (67.5%): no aporta |
+| "¿Aprende de nosotros?" | `python realimentacion.py <csv>` | Modo sombra: acierto contra lo que eligió el operador |
 | "¿No sería mejor optimizar globalmente?" | `python asignacion.py` | CP-SAT pierde por 12.9 puntos |
 | "¿Estos hallazgos son reales?" | `python procedencia.py` | Qué es del negocio y qué del generador |
 | "¿Cómo eligieron la tolerancia?" | `python barrido.py` | La curva precisión/cobertura completa |
@@ -96,19 +105,20 @@ python llm.py             # qué motor de lenguaje está activo
 
 ## Qué tecnología decide qué (para no confundirse al explicarlo)
 
-Son tres cosas distintas y conviene no mezclarlas:
+Son cuatro cosas distintas y conviene no mezclarlas:
 
-| Componente | Qué es | ¿Decide en producción? |
+| Componente | Qué es | ¿Qué hace en producción? |
 |---|---|---|
-| `solver.py` — subset-sum exacto | Algoritmo, no IA | **Sí** — encuentra las combinaciones |
-| `solver.ranking()` | Heurística de reglas de negocio | **Sí** — elige entre ambiguas |
-| `aprendizaje.py` | Machine learning (gradient boosting) | **No** — medido, empató, no conectado |
-| `llm.py` → explicador, cobranza | Modelo de lenguaje (Gemma on-premise) | **Sí**, pero no sobre dinero: solo explica y clasifica correos |
+| `solver.py` — subset-sum exacto | Algoritmo, no IA | **Decide** — el 70.6% que se aplica solo |
+| `solver.ranking()` | Heurística de reglas de negocio | **Decide** — ordena las combinaciones ambiguas |
+| `asignador.py` | Machine learning (gradient boosting) | **Propone, no aplica** — solo donde el solver no encuentra respuesta |
+| `aprendizaje.py` | Machine learning sobre las combinaciones | **No** — medido, empató, no conectado |
+| `llm.py` → explicador, cobranza | Modelo de lenguaje (Gemma on-premise) | **Redacta y clasifica** — nunca decide sobre dinero |
 
-**Nada que decida sobre un peso pasa por un modelo.** El LLM redacta la explicación
-que el humano lee y clasifica correos entrantes; la decisión de qué factura paga
-cada depósito la toma el algoritmo exacto. Esa separación es deliberada y es
-defendible ante un auditor.
+**Lo que se aplica sin humano es exclusivamente lo que tiene una única solución
+matemática exacta.** El modelo entrenado actúa solo donde esa solución no existe,
+y ahí propone: siempre hay una persona que confirma. Nunca sale plata por una
+probabilidad. Esa separación es deliberada y es defendible ante un auditor.
 
 ## Cambiar el motor de lenguaje
 
@@ -156,7 +166,7 @@ el problema que el sistema resuelve. Sí hace falta para entrenar y medir.
 | Los textos salen genéricos | Ollama detenido | `ollama serve`, o dejarlo así: funciona igual |
 | Cambié código y no se refleja | Caché de Streamlit | Reiniciar el proceso (la caché es en memoria) |
 | `contrato.py` marca NO CUMPLE | Columnas o formato distintos | Usar `alias=`, `sep=`, `encoding=` |
-| Veo 81.4% en un HTML | Es el archivo del compañero | Abrir `sonia\informe.html`, no el otro |
+| Veo 81.4% o 79.7% en un HTML | Es el dashboard del prototipo original | Abrir `sonia\torre.html` |
 
 ---
 

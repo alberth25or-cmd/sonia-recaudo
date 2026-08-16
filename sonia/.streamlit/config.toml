@@ -1,0 +1,49 @@
+# Identidad visual de la torre de control, aplicada a la aplicación.
+# Sin fuentes externas: se ve igual sin conexión.
+
+[theme]
+base = "dark"
+
+backgroundColor = "#0a0e1a"
+secondaryBackgroundColor = "#12172d"
+codeBackgroundColor = "#12172d"
+textColor = "#e7ecf7"
+borderColor = "#232a4a"
+dataframeBorderColor = "#232a4a"
+dataframeHeaderBackgroundColor = "#171f3d"
+
+# El cian brillante de la torre no sirve como relleno de botón: Streamlit pone
+# texto blanco encima. Se usa un cian más profundo para los rellenos y se
+# reserva el brillante para enlaces y acentos, donde va sobre fondo oscuro.
+primaryColor = "#0891b2"
+linkColor = "#22d3ee"
+linkUnderline = false
+
+blueColor = "#22d3ee"
+violetColor = "#a78bfa"
+orangeColor = "#fbbf24"
+yellowColor = "#fbbf24"
+greenColor = "#34d399"
+redColor = "#f87171"
+grayColor = "#8b93b8"
+
+chartCategoricalColors = ["#22d3ee", "#a78bfa", "#fbbf24", "#fb7185", "#34d399", "#f87171", "#8b93b8"]
+
+font = "sans-serif"
+codeFont = "monospace"
+baseFontSize = 15
+headingFontSizes = ["28px", "20px", "16px", "15px", "14px", "13px"]
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+
+baseRadius = "12px"
+buttonRadius = "10px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#0d1330"
+secondaryBackgroundColor = "#171f3d"
+codeBackgroundColor = "#12172d"
+textColor = "#e7ecf7"
+borderColor = "#232a4a"
+primaryColor = "#22d3ee"

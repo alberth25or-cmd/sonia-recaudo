@@ -141,12 +141,35 @@ dice *"85%, aplícalo"* — un número sin significado. Nosotros clasificamos po
 |---|---|---|---|
 | **AUTO** | Exactamente 1 solución | No hay ambigüedad | Nadie — se aplica |
 | **CONFIRMAR** | Varias soluciones | Demasiadas respuestas válidas | Humano elige de una lista |
-| **HIPOTESIS** | Ninguna, pero el depósito cabe en una factura | Probable pago parcial | Humano aprueba |
-| **INVESTIGAR** | Ninguna, y nada lo absorbe | Falta información | Humano investiga |
+| **HIPOTESIS** | Ninguna, pero el depósito cabe en una factura | Probable pago parcial | Humano aprueba la propuesta |
+| **INVESTIGAR** | Ninguna, y nada lo absorbe | Falta información | Humano confirma o corrige |
 
-**Lo importante:** el ML no entra "donde el solver falla". Donde el solver falla de
-verdad (colas 3 y 4) no hay candidatas que puntuar — un ranker necesita una lista
-que ordenar. El ML competiría en la cola 2, y ahí lo medimos y empató.
+### Dónde entra el modelo entrenado, y por qué ahí
+
+El planteamiento obvio es poner el ML a competir en la cola 2, ordenando las
+combinaciones que el solver encontró. Lo hicimos y **empató** (67.5% contra
+67.5%): el modelo redescubrió la regla de cercanía al vencimiento que la
+heurística ya codifica.
+
+El razonamiento que seguía era que en las colas 3 y 4 el ML no tenía nada que
+hacer, porque *un ranker necesita una lista que ordenar* y ahí el solver no
+encontró ninguna. **Ese razonamiento era un error de planteamiento.** No hay
+combinaciones, pero sí hay facturas abiertas, y la pregunta se puede hacer una
+por una:
+
+> ¿Cuál es la probabilidad de que este depósito esté tocando esta factura?
+
+Eso cambia la unidad de entrenamiento de *combinación* a *factura abierta*, lo
+que multiplica los ejemplos disponibles y hace el problema tratable. Y permite
+usar los depósitos que el solver ya resolvió exacto como datos etiquetados: los
+casos fáciles enseñan a atacar los difíciles.
+
+Medido con la verdad escondida, sobre los casos con 2+ facturas abiertas: la
+regla de vencimiento acierta **79.4%**, el modelo **96.6%**. Por eso está
+conectado en las colas 3 y 4, y no en la 2.
+
+**Propone, no aplica.** Lo que sale sin humano sigue siendo solo lo que tiene una
+única solución matemática exacta. Ver `asignador.py`.
 
 ### La tolerancia de calce, calibrada
 

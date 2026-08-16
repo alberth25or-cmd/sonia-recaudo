@@ -126,14 +126,26 @@ def leer(ruta, sep="|", encoding="latin-1"):
 
 
 def validar(tabla, ruta=None, alias=None, sep="|", encoding="latin-1"):
-    """Comprueba que una fuente cumpla el contrato. Devuelve (ok, informe, df)."""
+    """Comprueba que una fuente cumpla el contrato. Devuelve (ok, informe, df).
+
+    `ruta` acepta una ruta en disco o un archivo ya abierto (por ejemplo el que
+    devuelve un formulario de carga), para que subir un CSV desde la interfaz
+    pase por exactamente la misma validación que leerlo del disco.
+    """
     spec = ESQUEMA[tabla]
-    ruta = Path(ruta) if ruta else RAIZ / spec["archivo"]
     alias = alias or {}
     informe = []
 
-    if not ruta.exists():
-        return False, [f"✗ No existe el archivo: {ruta}"], None
+    subido = ruta is not None and not isinstance(ruta, (str, Path))
+    if not subido:
+        ruta = Path(ruta) if ruta else RAIZ / spec["archivo"]
+        if not ruta.exists():
+            return False, [f"✗ No existe el archivo: {ruta}"], None
+        nombre = ruta.name
+    else:
+        nombre = getattr(ruta, "name", "archivo cargado")
+        if hasattr(ruta, "seek"):
+            ruta.seek(0)
 
     try:
         df = leer(ruta, sep, encoding)
@@ -142,7 +154,7 @@ def validar(tabla, ruta=None, alias=None, sep="|", encoding="latin-1"):
                        "  Revisar el separador y el encoding."], None
 
     df = df.rename(columns={v: k for k, v in alias.items()})
-    informe.append(f"  archivo   {ruta.name}  ·  {len(df):,} filas × {len(df.columns)} columnas")
+    informe.append(f"  archivo   {nombre}  ·  {len(df):,} filas × {len(df.columns)} columnas")
 
     ok = True
     for col, (es_fecha, descripcion) in spec["columnas"].items():

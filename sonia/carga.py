@@ -11,10 +11,27 @@ import datos
 from agentes import bi, cobranza, correos, facturacion, recaudo
 
 
-@st.cache_data(ttl="2h", show_spinner="Procesando los depósitos del banco...")
+def _fuente(tabla):
+    """Archivo cargado en esta sesión, si lo hay; si no, el de la carpeta."""
+    return st.session_state.get("subidos", {}).get(tabla)
+
+
+@st.cache_data(ttl="2h", show_spinner="Procesando los depósitos del banco…")
 def todo():
-    f, p, ncs = datos.facturas(), datos.pagos(), datos.notas_credito()
-    clientes, fija, movil = datos.clientes(), datos.planta_fija(), datos.planta_movil()
+    # La caché se limpia explícitamente al cargar o descartar archivos
+    # (ver app_pages/datos_fuente.py), por eso puede leerse el origen aquí.
+    opciones = {"sep": st.session_state.get("sep", "|"),
+                "encoding": st.session_state.get("enc", "latin-1")}
+    if st.session_state.get("subidos"):
+        f = datos.facturas(_fuente("facturas"), **opciones)
+        p = datos.pagos(_fuente("pagos"), **opciones)
+        ncs = datos.notas_credito(_fuente("notas_credito"), **opciones)
+        clientes = datos.clientes(_fuente("clientes"), **opciones)
+        fija = datos.planta_fija(_fuente("fija"), **opciones)
+        movil = datos.planta_movil(_fuente("movil"), **opciones)
+    else:
+        f, p, ncs = datos.facturas(), datos.pagos(), datos.notas_credito()
+        clientes, fija, movil = datos.clientes(), datos.planta_fija(), datos.planta_movil()
 
     decisiones = recaudo.procesar(f, p)
     fuga = facturacion.detectar_fuga(fija, movil, f)
@@ -41,7 +58,7 @@ def todo():
     }
 
 
-@st.cache_data(ttl="2h", show_spinner="Clasificando correos con el modelo...")
+@st.cache_data(ttl="2h", show_spinner="Clasificando correos con el modelo…")
 def correos_clasificados():
     clasificados = cobranza.clasificar_lote(correos.CORREOS)
     return clasificados, cobranza.kpis(clasificados)

@@ -51,7 +51,12 @@ python barrido.py     # calibración de la ventana y la tolerancia
 
 **STP de 70.6%** — 1,612 de 2,283 depósitos aplicados sin que nadie los mire,
 S/ 194,482. En esa banda automática el motor **se equivoca 1 vez de cada 1,596**.
-La carga humana que queda es de **34 minutos por día hábil — 0.08 FTE**.
+La carga humana que queda es de **18.8 minutos por día hábil — 0.045 FTE**.
+
+Ese número era 34 minutos hasta que se conectó `asignador.py`. Los 221 casos de
+la cola *investigar* llegaban en blanco y costaban 5 minutos cada uno; ahora
+llegan con las facturas más probables señaladas y el trabajo pasa a ser
+confirmar. Ver «El asignador aprendido» más abajo.
 
 La precisión de la propuesta, medida escondiendo la respuesta y comparándola
 contra los 3,548 pagos del dataset, es **78.4%** sobre los eventos evaluables. Son
@@ -135,11 +140,9 @@ aplicar:
 > queda montado y el backend es intercambiable: con una API key se corre lo mismo
 > contra Claude y se compara. Eso es precisamente para lo que sirve desacoplarlo.
 
-## La capa de aprendizaje — y por qué no la entregamos entrenada
+## La capa de aprendizaje — dos intentos, uno perdido y uno ganado
 
-HighRadius y SAP añaden sobre el motor determinista una capa de machine learning
-entrenada con el historial de remesas de cada cliente. Implementamos esa capa y
-la evaluamos con **separación temporal**: entrenar con junio, predecir julio.
+### Intento 1: que el modelo elija entre las candidatas del solver — empató
 
 ```
 python aprendizaje.py
@@ -150,22 +153,73 @@ python aprendizaje.py
 | Heurística determinista | **67.5%** |
 | Modelo aprendido (gradient boosting) | **67.5%** |
 
-Empate exacto. La importancia de características explica por qué: el modelo
-asigna **0.741 a `dias_vto_max`** — aprendiendo desde cero, redescubrió la regla
-de cercanía al vencimiento que la heurística ya codifica. Mismo señal, mismo
-resultado.
+Empate exacto, y la importancia de características explica por qué: el modelo
+asigna **0.741 a `dias_vto_max`**. Aprendiendo desde cero redescubrió la regla de
+cercanía al vencimiento que la heurística ya codifica. Misma señal, mismo
+resultado. **Reemplazar una regla que funciona por un modelo que la iguala no
+aporta nada**, así que la cola CONFIRMAR sigue con la regla.
 
-**La conclusión no es que el ML no sirva, es que aquí no hay más señal que
-extraer.** El límite no es el algoritmo, son los datos: la mediana es **2 eventos
-por cliente** y solo el 4% llega a 5. Lo que HighRadius aprende —"esta empresa
-paga por lotes los martes", "esa otra descuenta retenciones"— necesita años de
-historial por cliente. Con dos observaciones no hay perfil que aprender.
+### Intento 2: que el modelo ataque lo que el solver NO resuelve — ganó
 
-Por eso el modelo **no se entrega entrenado**: entrenado sobre datos sintéticos
-aprendería los artefactos del generador y fallaría en producción de formas
-difíciles de detectar. Se entrega el **pipeline** —extracción de características,
-entrenamiento, arnés de evaluación— para que Integratel lo entrene con su
-historial real.
+El error del primer intento fue de planteamiento. Ordenar las candidatas del
+solver solo sirve donde el solver encontró candidatas; en los **537 depósitos sin
+calce exacto no hay ninguna que ordenar**. Medimos qué son esos casos: la mediana
+paga el **59%** de lo facturado. No son descuentos ni retenciones —eso daría
+95-99%— son pagos parciales grandes repartidos entre varias facturas.
+
+Así que el modelo hace otra cosa: **puntúa factura por factura** la probabilidad
+de que el depósito la esté tocando. Una fila por factura abierta en vez de una
+por combinación, lo que da 5,042 ejemplos en lugar de unos cientos. Y los casos
+que el solver ya resuelve exacto son datos etiquetados gratis: los fáciles
+enseñan a atacar los difíciles.
+
+```
+python asignador.py
+```
+
+| Julio, verdad escondida | Casos | Hoy | Regla simple | Modelo |
+|---|---|---|---|---|
+| Pago parcial | 130 | 76.9% | 75.4% | **96.9%** |
+| Investigar | 86 | 0.0% | 95.3% | **97.7%** |
+| **Con 2+ facturas abiertas** | **175** | — | **79.4%** | **96.6%** |
+
+«Regla simple» es imputar a la factura que vence más cerca — lo que cualquiera
+escribiría en diez minutos, y el rival contra el que el modelo tiene que
+justificarse. Medirlo contra «hoy» exageraría: la cola *investigar* puntúa 0 por
+no proponer nada, no por equivocarse.
+
+**Descartamos que dependa de un artefacto del generador.** El rasgo más
+importante es `acumulado_fifo` (0.533), que podría ser un atajo si el generador
+hubiera fabricado los pagos como «las primeras k facturas FIFO». Quitándolo, el
+modelo pierde **1.1 puntos** (96.6% → 95.4%); ese rasgo por sí solo llega apenas
+al 62.9%. La señal está distribuida, no concentrada en una llave.
+
+**El modelo propone, nunca aplica.** Solo actúa donde el algoritmo exacto no
+encuentra respuesta, y ahí siempre hay una persona que confirma. Lo que sale sin
+intervención es exclusivamente lo que tiene una única solución matemática exacta.
+
+### El bucle: el sistema aprende de su propia gente
+
+```
+python realimentacion.py realimentacion.csv                # modo sombra
+python realimentacion.py realimentacion.csv --reentrenar
+```
+
+Cada caso que un operador resuelve en la torre es un ejemplo etiquetado: vio el
+depósito, vio las facturas abiertas y eligió. Desde la pestaña Registro exporta
+esas decisiones y el modelo se reentrena con ellas.
+
+Antes de aprender, `realimentacion.py` responde la pregunta que importa: **¿el
+modelo habría acertado?** Compara lo que proponía contra lo que el humano
+eligió — medido *antes* de estudiar esas mismas decisiones. Ese porcentaje es lo
+que permite decidir si el modelo se ganó el derecho a proponer con más peso.
+
+Con arranque en frío no hace falta nada de esto: sin artefacto entrenado
+`proponer()` devuelve el orden heurístico y el sistema funciona el día uno.
+
+> **Advertencia:** el operador también se equivoca, y aprender de sus decisiones
+> propaga sus sesgos. Por eso la auditoría semanal no es opcional: es lo que
+> mantiene limpia la fuente de entrenamiento.
 
 ## La decisión de diseño que sostiene todo
 

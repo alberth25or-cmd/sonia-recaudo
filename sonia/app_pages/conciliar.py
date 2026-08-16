@@ -41,8 +41,8 @@ d = carga.todo()
 decisiones, detalle = d["decisiones"], d["detalle"]
 pendientes = decisiones[decisiones.cola != "AUTO"]
 
-st.title("Estación de verificación")
-st.caption("Agente de Recaudo — el operador confirma, el motor calcula")
+st.title("Conciliar")
+st.caption("Un depósito a la vez — el motor propone, tú decides")
 
 # --- Dónde estoy: la cola completa antes de ver un caso ----------------------
 revisados_ids = set(st.session_state.decisiones)

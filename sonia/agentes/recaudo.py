@@ -28,6 +28,13 @@ import pandas as pd
 import backtest
 import solver
 
+# El asignador aprendido es OPCIONAL: ataca los casos que el solver no resuelve.
+# Si falta el artefacto —o sklearn— el motor funciona igual con la heurística.
+try:
+    import asignador
+except Exception:                                     # pragma: no cover
+    asignador = None
+
 TOLERANCIA_SOLES = 0.00  # calibrado en triaje.py: con 0 la banda automática se equivoca 1 de 1,596
 
 COLAS = {
@@ -40,7 +47,14 @@ COLAS = {
 # Fuente única de los tiempos por caso: los usan triaje.py, orquestador.py y
 # reporte.py. Son SUPUESTOS de diseño, no medidos con un operador real —
 # cronometrar y ajustar aquí recalcula el personal en los tres sitios.
-SEGUNDOS_POR_CASO = {"AUTO": 0, "CONFIRMAR": 20, "HIPOTESIS": 60, "INVESTIGAR": 300}
+#
+# INVESTIGAR bajó de 300 a 120 segundos al conectar asignador.py. El supuesto de
+# 5 minutos correspondía a un caso que llegaba EN BLANCO: el operador abría el
+# estado de cuenta y buscaba desde cero. Ahora llega con una factura señalada y
+# su confianza (97.7% de acierto medido sobre julio), así que el trabajo pasa a
+# ser confirmar o corregir. Se deja por encima de HIPOTESIS porque aquí ninguna
+# factura absorbe el depósito y la revisión es menos evidente.
+SEGUNDOS_POR_CASO = {"AUTO": 0, "CONFIRMAR": 20, "HIPOTESIS": 60, "INVESTIGAR": 120}
 DIAS_HABILES_VENTANA = 43   # jun-jul 2026
 JORNADA_MINUTOS = 7 * 60    # horas productivas por jornada
 
@@ -69,6 +83,9 @@ def procesar(facturas, pagos, tolerancia_soles=TOLERANCIA_SOLES):
     por_factura, facturas_cliente, pagos_factura = backtest.construir_indices(facturas, pagos)
     tol = solver.a_centimos(tolerancia_soles)
 
+    # Se carga una sola vez, no por depósito. None = no hay artefacto entrenado.
+    modelo = asignador.cargar()[0] if asignador else None
+
     decisiones = []
     for d in _depositos(pagos).itertuples():
         cands = backtest.candidatas_abiertas(
@@ -78,7 +95,7 @@ def procesar(facturas, pagos, tolerancia_soles=TOLERANCIA_SOLES):
         deposito = solver.a_centimos(d.monto)
         soluciones, podado = solver.resolver(cands, deposito, tolerancia_centimos=tol)
 
-        parcial = None
+        parcial, ranking_modelo = None, []
         if soluciones:
             ordenadas = solver.ranking(soluciones, por_factura, d.fecha_pago)
             propuesta = ordenadas[0]
@@ -87,18 +104,35 @@ def procesar(facturas, pagos, tolerancia_soles=TOLERANCIA_SOLES):
         else:
             propuesta = ()
             alternativas = []
-            # Si el depósito cabe dentro de alguna factura abierta, la hipótesis
-            # natural es pago parcial. Se sugiere la que vence más cerca del
-            # depósito: es contra la que el cliente estaba pagando.
             absorben = [c for c in cands if c["centimos"] > deposito]
             cola = "HIPOTESIS" if absorben else "INVESTIGAR"
+
+            # Aquí no hay combinaciones que ordenar, así que entra el asignador
+            # aprendido: puntúa factura por factura la probabilidad de que el
+            # pago la esté tocando. Es lo que hace que la cola INVESTIGAR deje
+            # de llegar en blanco. El humano sigue confirmando: el modelo
+            # propone, nunca aplica.
+            if asignador and cands:
+                ranking_modelo = asignador.proponer(cands, deposito, d.fecha_pago,
+                                                    modelo=modelo)
+
+            # La sugerencia de pago parcial exige una factura que ABSORBA el
+            # depósito. Se elige la mejor puntuada entre esas; sin modelo, la
+            # que vence más cerca.
             if absorben:
-                elegida = min(absorben, key=lambda c: abs((c["fecha_vto"] - d.fecha_pago).days)
-                              if c["fecha_vto"] is not None else 10**6)
+                puntuadas = {r["factura"]: r["puntaje"] for r in ranking_modelo
+                             if r["puntaje"] is not None}
+                if puntuadas:
+                    elegida = max(absorben, key=lambda c: puntuadas.get(c["factura"], -1))
+                else:
+                    elegida = min(absorben,
+                                  key=lambda c: abs((c["fecha_vto"] - d.fecha_pago).days)
+                                  if c["fecha_vto"] is not None else 10**6)
                 parcial = {
                     "factura": elegida["factura"],
                     "importe": round(elegida["centimos"] / 100, 2),
                     "saldo_restante": round((elegida["centimos"] - deposito) / 100, 2),
+                    "puntaje": puntuadas.get(elegida["factura"]),
                 }
 
         decisiones.append({
@@ -111,16 +145,17 @@ def procesar(facturas, pagos, tolerancia_soles=TOLERANCIA_SOLES):
             "n_soluciones": len(soluciones),
             "alternativas": alternativas,
             "parcial_sugerido": parcial,
+            "ranking_modelo": ranking_modelo,
             "abiertas": [{"factura": c["factura"],
                           "importe": round(c["centimos"] / 100, 2),
                           "vence": c["fecha_vto"]} for c in cands],
-            "explicacion": _explicar(cola, propuesta, cands, por_factura, d),
+            "explicacion": _explicar(cola, propuesta, cands, por_factura, d, ranking_modelo),
         })
 
     return pd.DataFrame(decisiones)
 
 
-def _explicar(cola, propuesta, cands, por_factura, dep):
+def _explicar(cola, propuesta, cands, por_factura, dep, ranking=()):
     """Una línea que el operador pueda auditar sin abrir otro sistema."""
     if cola == "AUTO":
         vtos = [por_factura[n]["fecha_vto"] for n in propuesta if por_factura[n]["fecha_vto"] is not None]
@@ -134,6 +169,17 @@ def _explicar(cola, propuesta, cands, por_factura, dep):
         mayores = [c for c in cands if c["centimos"] > solver.a_centimos(dep.monto)]
         return (f"Ninguna combinación suma exacto, pero el depósito cabe dentro de "
                 f"{len(mayores)} factura(s) abierta(s): probable pago parcial.")
+
+    # INVESTIGAR. Antes este caso llegaba en blanco y el operador arrancaba de
+    # cero; con el asignador entrenado llega con una factura señalada.
+    top = next((r for r in ranking if r.get("puntaje") is not None), None)
+    if top:
+        # Un decimal, y nunca "100%": el modelo no está seguro del todo nunca, y
+        # decirlo así le enseña al operador a no revisar.
+        conf = min(top["puntaje"], 0.999)
+        return (f"Ninguna combinación suma exacto. El modelo señala la factura "
+                f"{top['factura']} (S/ {top['importe']:,.2f}) como la más probable, "
+                f"con {conf:.1%} de confianza. Confirmar o corregir.")
     return (f"Ninguna de las {len(cands)} facturas abiertas del cliente explica el monto. "
             f"Revisar si corresponde a una factura fuera del sistema o a otra moneda.")
 
